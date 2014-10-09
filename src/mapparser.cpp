@@ -160,7 +160,7 @@ void MapParser::threaded_parse(ParseThreadSafety* thread_safety_p,
     Fragment* frag = NULL;
     while (fragments_remain) {
       frag = new Fragment(_lib);
-      fragments_remain = _parser->next_fragment(*frag);
+      fragments_remain = _parser->next_fragment(*frag, pts);
       if (frag->num_hits()) {
         break;
       }
@@ -207,6 +207,8 @@ void MapParser::threaded_parse(ParseThreadSafety* thread_safety_p,
       }
       m.neighbors(neighbors);
     }
+
+    // Write out processed fragments
     boost::scoped_ptr<Fragment> done_frag(pts.proc_out.pop(false));
     while (done_frag) {
       if (_writer && _write_active) {
@@ -234,6 +236,15 @@ void MapParser::threaded_parse(ParseThreadSafety* thread_safety_p,
     }
     still_out--;
   }
+
+  // write out invalid alignments
+  boost::scoped_ptr<ReadHit> invalid(pts.proc_invalid.pop(false));
+  while (invalid) {
+    if (_writer && _write_active) {
+      _writer->write_alignment(*invalid);
+    }
+    invalid.reset(pts.proc_invalid.pop(false));
+  }
 }
 
 BAMParser::BAMParser(BamTools::BamReader* reader) : _reader(reader) {
@@ -258,7 +269,7 @@ BAMParser::BAMParser(BamTools::BamReader* reader) : _reader(reader) {
   } while(!map_end_from_alignment(a));
 }
 
-bool BAMParser::next_fragment(Fragment& nf) {
+bool BAMParser::next_fragment(Fragment& nf, ParseThreadSafety& pts) {
   nf.add_map_end(_read_buff);
 
   BamTools::BamAlignment a;
@@ -270,7 +281,9 @@ bool BAMParser::next_fragment(Fragment& nf) {
       return false;
     } else if (!map_end_from_alignment(a)) {
       // mapping is not valid
-      _writer->write_alignment(a);
+      ReadHit r;
+      r.bam = a;
+      pts.proc_invalid.push(&r);
       continue;
     } else if (!nf.add_map_end(_read_buff)) {
       return true;
@@ -400,7 +413,7 @@ SAMParser::SAMParser(istream* in) {
   }
 }
 
-bool SAMParser::next_fragment(Fragment& nf) {
+bool SAMParser::next_fragment(Fragment& nf, ParseThreadSafety& pts) {
   nf.add_map_end(_read_buff);
 
   _read_buff = new ReadHit();
@@ -411,7 +424,9 @@ bool SAMParser::next_fragment(Fragment& nf) {
     if (!map_end_from_line(line_buff)) {
       // mapping is not valid, just write out the alignment
       string sam_line(line_buff);
-      _writer->write_alignment(sam_line);
+      ReadHit r;
+      r.sam = sam_line;
+      pts.proc_invalid.push(&r);
       continue;
     }
     if (!nf.add_map_end(_read_buff)) {
@@ -590,11 +605,11 @@ void BAMWriter::write_fragment(Fragment& f) {
   }
 }
 
-void BAMWriter::write_alignment(BamTools::BamAlignment& a) {
+void BAMWriter::write_alignment(ReadHit& a) {
   if (!_sample) {
-    a.AddTag("XP","f",0.0);
+    a.bam.AddTag("XP","f",0.0);
   }
-  _writer->SaveAlignment(a);
+  _writer->SaveAlignment(a.bam);
 }
 
 
@@ -635,10 +650,10 @@ void SAMWriter::write_fragment(Fragment& f) {
   }
 }
 
-void SAMWriter::write_alignment(Readhit& r) {
+void SAMWriter::write_alignment(ReadHit& a) {
   if (_sample) {
-    *_out << a << endl;
-  else {
-    *_out << a << " XP:f:" << 0.0 << endl;
+    *_out << a.sam << endl;
+  } else {
+    *_out << a.sam << " XP:f:" << 0.0 << endl;
   }
 }

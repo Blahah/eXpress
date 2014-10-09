@@ -48,3 +48,43 @@ bool ThreadSafeFragQueue::is_empty(bool block) {
   }
   return true;
 }
+
+ThreadSafeInvalidQueue::ThreadSafeInvalidQueue(size_t max_size)
+    : _max_size(max_size) {
+}
+
+ReadHit* ThreadSafeInvalidQueue::pop(bool block) {
+  boost::unique_lock<boost::mutex> lock(_mut);
+  while (_queue.empty()) {
+    if (!block) {
+            return NULL;
+    }
+        _cond.wait(lock);
+  }
+
+  _cond.notify_all();
+  ReadHit* res = _queue.front();
+  _queue.pop();
+  return res;
+}
+
+void ThreadSafeInvalidQueue::push(ReadHit* frag) {
+  boost::unique_lock<boost::mutex> lock(_mut);
+  while (_queue.size() == _max_size) {
+    _cond.wait(lock);
+  }
+
+  _cond.notify_all();
+  return _queue.push(frag);
+}
+
+bool ThreadSafeInvalidQueue::is_empty(bool block) {
+  boost::unique_lock<boost::mutex> lock(_mut);
+  while (!_queue.empty()) {
+    if (!block) {
+      return false;
+    }
+    _cond.wait(lock);
+  }
+  return true;
+}

@@ -29,6 +29,38 @@ struct Library;
 typedef boost::unordered_map<std::string, size_t> TransIndex;
 
 /**
+ * The Writer class is an abstract class for implementing a SAMWriter or
+ * BAMWriter. It writes Fragment objects back to file (in SAM/BAM format) with
+ * per-mapping probabilistic assignments, or by sampling a single mapping based
+ * on assignment probabilities.
+ *  @author    Adam Roberts
+ *  @date      2011
+ *  @copyright Artistic License 2.0
+ **/
+class Writer {
+ protected:
+  /**
+   * A private bool that specifies if a single alignment should be sampled
+   * (true) or all output with their respective posterior probabilities (false).
+   */
+  bool _sample;
+
+ public:
+  /**
+   * Dummy destructor.
+   */
+  virtual ~Writer(){}
+  /**
+   * A member function that writes all mappings of the fragment to the ouptut
+   * file along with their posterior probabilities in the "XP" field.
+   * @param f the processed Fragment to output.
+   */
+  virtual void write_fragment(Fragment& f)=0;
+  virtual void write_alignment(ReadHit& f)=0;
+};
+
+
+/**
  * The Parser class is an abstract class for implementing a SAMParser or
  * BAMParser. It fills Fragment objects by parsing an input file in SAM/BAM
  * format.
@@ -79,7 +111,7 @@ class Parser {
    * @param f the empty Fragment to add mappings to.
    * @return True iff more reads remain in the SAM/BAM file/stream.
    */
-  virtual bool next_fragment(Fragment& f)=0;
+  virtual bool next_fragment(Fragment& nf, ParseThreadSafety& pts)=0;
   /**
    * A member function that resets the parser and rewinds to the beginning of
    * the input.
@@ -87,35 +119,6 @@ class Parser {
   virtual void reset() = 0;
 };
 
-/**
- * The Writer class is an abstract class for implementing a SAMWriter or
- * BAMWriter. It writes Fragment objects back to file (in SAM/BAM format) with
- * per-mapping probabilistic assignments, or by sampling a single mapping based
- * on assignment probabilities.
- *  @author    Adam Roberts
- *  @date      2011
- *  @copyright Artistic License 2.0
- **/
-class Writer {
- protected:
-  /**
-   * A private bool that specifies if a single alignment should be sampled
-   * (true) or all output with their respective posterior probabilities (false).
-   */
-  bool _sample;
-
- public:
-  /**
-   * Dummy destructor.
-   */
-  virtual ~Writer(){}
-  /**
-   * A member function that writes all mappings of the fragment to the ouptut
-   * file along with their posterior probabilities in the "XP" field.
-   * @param f the processed Fragment to output.
-   */
-  virtual void write_fragment(Fragment& f)=0;
-};
 
 /**
  * The BAMParser class fills Fragment objects by parsing an input file in BAM
@@ -156,7 +159,7 @@ class BAMParser : public Parser {
    * @param f the empty Fragment to add mappings to.
    * @return True iff more reads remain in the BAM file/stream.
    */
-  bool next_fragment(Fragment& f);
+  bool next_fragment(Fragment& nf, ParseThreadSafety& pts);
   /**
    * A member function that resets the parser and rewinds to the beginning of
    * the BAM file.
@@ -207,7 +210,7 @@ public:
    * @param f the empty Fragment to add mappings to.
    * @return True iff more reads remain in the SAM/BAM file/stream.
    */
-  bool next_fragment(Fragment& f);
+   bool next_fragment(Fragment& nf, ParseThreadSafety& pts);
   /**
    * A member function that resets the parser and rewinds to the beginning of
    * the SAM file.
@@ -256,7 +259,7 @@ class BAMWriter : public Writer {
   /**
    * A member function that writes invalid alignments to the output SAM file.
    */
-  void write_alignment(BamTools::BamAlignment& a);
+  void write_alignment(ReadHit& a);
 };
 
 /**
@@ -298,7 +301,7 @@ class SAMWriter : public Writer {
   /**
    * A member function that writes invalid alignments to the output SAM file.
    */
-  void write_alignment(Readhit& r);
+  void write_alignment(ReadHit& r);
 };
 
 /**
