@@ -253,6 +253,10 @@ class BAMWriter : public Writer {
    * @param f the processed Fragment to output alignments of.
    */
   void write_fragment(Fragment& f);
+  /**
+   * A member function that writes invalid alignments to the output SAM file.
+   */
+  void write_alignment(BamTools::BamAlignment& a);
 };
 
 /**
@@ -291,6 +295,10 @@ class SAMWriter : public Writer {
    * @param f the processed Fragment to output alignments of.
    */
   void write_fragment(Fragment& f);
+  /**
+   * A member function that writes invalid alignments to the output SAM file.
+   */
+  void write_alignment(Readhit& r);
 };
 
 /**

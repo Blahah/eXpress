@@ -169,7 +169,7 @@ void MapParser::threaded_parse(ParseThreadSafety* thread_safety_p,
     }
     for (size_t i = 0; frag && i < frag->hits().size(); ++i) {
       FragHit& m = *(frag->hits()[i]);
-      
+
       if (m.first_read() && m.first_read()->seq.length() > max_read_len) {
         logger.severe("Length of first read for fragment '%s' is longer than "
                       "maximum allowed read length (%d vs. %d). Increase the "
@@ -184,7 +184,7 @@ void MapParser::threaded_parse(ParseThreadSafety* thread_safety_p,
                       m.frag_name().c_str(),  m.second_read()->seq.length(),
                       max_read_len);
       }
-      
+
       Target* t = targ_table.get_targ(m.target_id());
       if (!t) {
         logger.severe("Target sequence at index '%s' not found. Verify that it "
@@ -193,7 +193,7 @@ void MapParser::threaded_parse(ParseThreadSafety* thread_safety_p,
       }
       m.target(t);
       assert(t->id() == m.target_id());
-      
+
       // Add num_neighbors targets on either side to the neighbors list.
       // Used for experimental feature.
       vector<const Target*> neighbors;
@@ -266,8 +266,11 @@ bool BAMParser::next_fragment(Fragment& nf) {
 
   while(true) {
     if (!_reader->GetNextAlignment(a)) {
+      // no more alignments
       return false;
     } else if (!map_end_from_alignment(a)) {
+      // mapping is not valid
+      _writer->write_alignment(a);
       continue;
     } else if (!nf.add_map_end(_read_buff)) {
       return true;
@@ -292,7 +295,7 @@ bool BAMParser::map_end_from_alignment(BamTools::BamAlignment& a) {
   if (is_paired && (direction == F || direction == R)) {
     return false;
   }
-  
+
   bool is_reversed = a.IsReverseStrand();
   bool is_mate_reversed = a.IsMateReverseStrand();
   if (is_paired && (!a.IsMateMapped() || a.RefID != a.MateRefID ||
@@ -301,7 +304,7 @@ bool BAMParser::map_end_from_alignment(BamTools::BamAlignment& a) {
                     (is_mate_reversed && a.MatePosition < a.Position))) {
     return false;
   }
-  
+
   bool left_first = (!is_paired && !is_reversed) ||
                     (a.IsFirstMate() && !is_reversed)||
                     (a.IsSecondMate() && is_reversed);
@@ -310,7 +313,7 @@ bool BAMParser::map_end_from_alignment(BamTools::BamAlignment& a) {
       ((direction == FR || direction == F) && !left_first)) {
     return false;
   }
-    
+
   r.name = a.Name;
   if (boost::algorithm::ends_with(r.name, "\1") ||
       boost::algorithm::ends_with(r.name, "\2")) {
@@ -325,7 +328,7 @@ bool BAMParser::map_end_from_alignment(BamTools::BamAlignment& a) {
   r.seq.set(a.QueryBases, is_reversed);
   r.bam = a;
   r.right = r.left + cigar_length(a.CigarData, r.inserts, r.deletes);
-  
+
   foreach (Indel& indel, r.inserts) {
     if (indel.len > max_indel_size) {
       return false;
@@ -336,7 +339,7 @@ bool BAMParser::map_end_from_alignment(BamTools::BamAlignment& a) {
       return false;
     }
   }
-  
+
   return true;
 }
 
@@ -406,6 +409,9 @@ bool SAMParser::next_fragment(Fragment& nf) {
   while(_in->good()) {
     _in->getline (line_buff, BUFF_SIZE-1, '\n');
     if (!map_end_from_line(line_buff)) {
+      // mapping is not valid, just write out the alignment
+      string sam_line(line_buff);
+      _writer->write_alignment(sam_line);
       continue;
     }
     if (!nf.add_map_end(_read_buff)) {
@@ -584,6 +590,14 @@ void BAMWriter::write_fragment(Fragment& f) {
   }
 }
 
+void BAMWriter::write_alignment(BamTools::BamAlignment& a) {
+  if (!_sample) {
+    a.AddTag("XP","f",0.0);
+  }
+  _writer->SaveAlignment(a);
+}
+
+
 SAMWriter::SAMWriter(ostream* out, bool sample) : _out(out) {
   _sample = sample;
 }
@@ -618,5 +632,13 @@ void SAMWriter::write_fragment(Fragment& f) {
       }
     }
     assert(approx_eq(total, 1.0));
+  }
+}
+
+void SAMWriter::write_alignment(Readhit& r) {
+  if (_sample) {
+    *_out << a << endl;
+  else {
+    *_out << a << " XP:f:" << 0.0 << endl;
   }
 }
